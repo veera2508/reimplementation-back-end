@@ -341,4 +341,86 @@ RSpec.describe 'Participants API', type: :request do
       end
     end
   end
+
+  path '/participants/{id}/update_duty' do
+    patch 'Update participant duty' do
+      tags 'Participants'
+      consumes 'application/json'
+      produces 'application/json'
+
+      parameter name: :id, in: :path, type: :integer, description: 'ID of the participant'
+      parameter name: 'Authorization', in: :header, type: :string, required: true, description: 'Bearer token'
+      parameter name: :duty_payload, in: :body, schema: {
+        type: :object,
+        properties: {
+          duty_id: { type: :integer, nullable: true }
+        }
+      }
+
+      let(:duty_tester) { Duty.create!(name: 'Tester') }
+      let(:duty_dev) { Duty.create!(name: 'Developer') }
+      let(:studentc) do
+        User.create!(
+          name: 'studentc',
+          password_digest: 'password',
+          role_id: @roles[:student].id,
+          full_name: 'Student C',
+          email: 'studentc@example.com'
+        )
+      end
+      let!(:participant3) { AssignmentParticipant.create!(user_id: studentb.id, parent_id: assignment1.id, handle: studentb.name) }
+      let!(:participant4) { AssignmentParticipant.create!(user_id: studentc.id, parent_id: assignment1.id, handle: studentc.name) }
+      let!(:assignment_duty_tester) { AssignmentsDuty.create!(assignment_id: assignment1.id, duty_id: duty_tester.id, max_members_for_duty: 1) }
+      let!(:assignment_duty_dev) { AssignmentsDuty.create!(assignment_id: assignment1.id, duty_id: duty_dev.id, max_members_for_duty: 2) }
+      let!(:assignment_team) { AssignmentTeam.create!(name: 'A1 Team', parent_id: assignment1.id) }
+      let!(:tp1) { TeamsParticipant.create!(team_id: assignment_team.id, participant_id: participant1.id, user_id: participant1.user_id) }
+      let!(:tp2) { TeamsParticipant.create!(team_id: assignment_team.id, participant_id: participant3.id, user_id: participant3.user_id) }
+      let!(:tp3) { TeamsParticipant.create!(team_id: assignment_team.id, participant_id: participant4.id, user_id: participant4.user_id) }
+
+      response '200', 'Student updates their own duty' do
+        let(:id) { participant1.id }
+        let(:duty_payload) { { duty_id: duty_dev.id } }
+
+        run_test! do |response|
+          data = JSON.parse(response.body)
+          expect(data['message']).to eq('Duty updated successfully')
+          expect(participant1.reload.duty_id).to eq(duty_dev.id)
+        end
+      end
+
+      response '403', 'Student cannot update someone else duty' do
+        let(:id) { participant3.id }
+        let(:duty_payload) { { duty_id: duty_dev.id } }
+
+        run_test! do |response|
+          expect(response.status).to eq(403)
+        end
+      end
+
+      response '422', 'Second student cannot take full role' do
+        let(:id) { participant3.id }
+        let(:token) { JsonWebToken.encode({ id: studentb.id }) }
+        let(:Authorization) { "Bearer #{token}" }
+        let(:duty_payload) { { duty_id: duty_tester.id } }
+
+        before do
+          participant1.update!(duty_id: duty_tester.id)
+        end
+
+        run_test! do |response|
+          expect(response.status).to eq(422)
+          expect(JSON.parse(response.body)['error']).to include('limit reached')
+        end
+      end
+
+      response '404', 'Participant not found' do
+        let(:id) { 999_999 }
+        let(:duty_payload) { { duty_id: duty_dev.id } }
+
+        run_test! do |response|
+          expect(response.status).to eq(404)
+        end
+      end
+    end
+  end
 end

@@ -1,6 +1,12 @@
 class ParticipantsController < ApplicationController
   include ParticipantsHelper
 
+  def action_allowed?
+    return true unless params[:action] == 'update_duty'
+
+    current_user_has_student_privileges?
+  end
+
   # Return a list of participants for a given user
   # params - user_id
   # GET /participants/user/:user_id
@@ -115,6 +121,30 @@ class ParticipantsController < ApplicationController
       render json: { message: successful_deletion_message }, status: :ok
     else
       render json: participant.errors, status: :unprocessable_entity
+    end
+  end
+
+  # Updates duty for a participant.
+  # PATCH /participants/:id/update_duty
+  def update_duty
+    participant = Participant.find_by(id: params[:id], type: 'AssignmentParticipant')
+    return render json: { error: 'Participant not found' }, status: :not_found unless participant
+    return render json: { error: 'You are not authorized to update this participant' }, status: :forbidden unless participant.user_id == current_user.id
+
+    duty_id = params[:duty_id]
+    if duty_id.present?
+      assignment_duty = AssignmentsDuty.find_by(assignment_id: participant.parent_id, duty_id: duty_id)
+      return render json: { error: 'Duty is not assigned to this assignment' }, status: :unprocessable_entity unless assignment_duty
+    end
+
+    participant.duty_id = duty_id.presence
+    if participant.save
+      render json: {
+        message: 'Duty updated successfully',
+        participant: ParticipantSerializer.new(participant).as_json
+      }, status: :ok
+    else
+      render json: { error: participant.errors.full_messages.to_sentence }, status: :unprocessable_entity
     end
   end
 

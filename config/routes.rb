@@ -155,6 +155,9 @@ Rails.application.routes.draw do
       end
 
       resources :participants do
+        member do
+          patch :update_duty
+        end
         collection do
           get '/user/:user_id', to: 'participants#list_user_participants'
           get '/assignment/:assignment_id', to: 'participants#list_assignment_participants'
